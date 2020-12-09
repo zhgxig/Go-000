@@ -15,54 +15,57 @@ import (
 func main() {
 	g := errgroup.Group{}
 
-	signalCh := make(chan os.Signal, 1)
-	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+	signalMsg := make(chan os.Signal, 1)
+	signal.Notify(signalMsg, os.Interrupt, syscall.SIGTERM)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sm := http.NewServeMux()
-	sm.HandleFunc("/service", service.Service)
+	nsm1 := http.NewServeMux()
+	nsm1.HandleFunc("/service1", service.Service1)
 
-	httpServerProduct := http.Server{
-		Handler: sm,
-		Addr:    ":8080",
+	nsm2 := http.NewServeMux()
+	nsm2.HandleFunc("/service2", service.Service2)
+
+	Server1 := http.Server{
+		Handler: nsm1,
+		Addr:    ":15000",
 	}
 
-	httpServerDebug := http.Server{
-		Handler: sm,
-		Addr:    ":8090",
+	Server2 := http.Server{
+		Handler: nsm2,
+		Addr:    ":16000",
 	}
 
 	g.Go(func() error {
-		fmt.Printf("Product Env Listen on %v\n", httpServerProduct.Addr)
-		return httpServerProduct.ListenAndServe()
+		fmt.Printf("Server1 addr %v\n", Server1.Addr)
+		return Server1.ListenAndServe()
 	})
 
 	g.Go(func() error {
-		fmt.Printf("Debug Env Listen on %v\n", httpServerDebug.Addr)
-		return httpServerDebug.ListenAndServe()
+		fmt.Printf("Server2 addr %v\n", Server2.Addr)
+		return Server2.ListenAndServe()
 	})
 
 	g.Go(func() error {
 		var msg string
 		select {
-		case s := <-signalCh:
-			msg = fmt.Sprintf("Got signal: %s", s)
+		case s := <-signalMsg:
+			msg = fmt.Sprintf("signal msg: %s", s)
 		case <-ctx.Done():
-			msg = fmt.Sprintf("ctx err: %v", ctx.Err())
+			msg = fmt.Sprintf("ctx: %v", ctx.Err())
 		}
 
-		if err := httpServerProduct.Shutdown(ctx); err != nil {
+		if err := Server1.Shutdown(ctx); err != nil {
 			return err
 		}
-		if err := httpServerDebug.Shutdown(ctx); err != nil {
+		if err := Server2.Shutdown(ctx); err != nil {
 			return err
 		}
 		return errors.New(msg)
 	})
 
 	if err := g.Wait(); err != nil {
-		fmt.Printf("error: %s", err)
+		fmt.Printf("err is : %s", err)
 	}
 }
